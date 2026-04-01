@@ -285,7 +285,13 @@ function Diagram({ instruments, totalDepth, surface, onDragDepth, isMobile }) {
   );
 
   return (
-    <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block", touchAction: "none", userSelect: "none" }}>
+    <svg
+      ref={svgRef}
+      width="100%"
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: "block", touchAction: "none", userSelect: "none", height: isMobile ? "100%" : "auto" }}
+    >
       <rect width={W} height={H} fill={T.bg} />
       {ticks.map((depth) => {
         const y = depthToY(depth);
@@ -648,8 +654,8 @@ export default function App() {
 
         <div className="layout" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {(!isMobile || mobileView === "diagram") ? (
-          <div className="diagram-panel" style={{ flex: "0 0 340px", width: isMobile ? "100%" : undefined, padding: 4, position: "sticky", top: 0, alignSelf: "flex-start", maxHeight: "100vh", overflowY: "auto" }}>
-            <div style={{ background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+          <div className="diagram-panel" style={{ flex: "0 0 340px", width: isMobile ? "100%" : undefined, padding: 4, position: "sticky", top: 0, alignSelf: "flex-start", maxHeight: isMobile ? "none" : "100vh", overflowY: isMobile ? "visible" : "auto" }}>
+            <div className="diagram-shell" style={{ background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", display: "flex", flexDirection: "column" }}>
               <div style={{ padding: "8px 12px 4px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: T.dim, letterSpacing: "0.08em" }}>BOREHOLE CROSS-SECTION - {draft.totalDepth}m</div>
               <Diagram instruments={draft.instruments} totalDepth={draft.totalDepth} surface={draft.surface} onDragDepth={handleDragDepth} isMobile={isMobile} />
               {isMobile ? <div style={{ padding: "10px 12px 14px", borderTop: `1px solid ${T.border}`, fontSize: 12, color: T.dim, lineHeight: 1.5 }}>Drag the handle markers to fine-tune casing, screen, and seal depths, then switch back to Instruments to review the numeric values.</div> : null}

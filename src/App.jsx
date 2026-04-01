@@ -587,12 +587,6 @@ export default function App() {
     }
   }, [isMobile]);
 
-  const quickStats = [
-    { label: "Instruments", value: draft.instruments.length },
-    { label: "Depth", value: `${draft.totalDepth}m` },
-    { label: "Surface", value: SURFACE_COMPLETIONS.find((item) => item.v === draft.surface)?.l || "Not set" },
-  ];
-
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: T.sans }}>
       <div style={{ background: T.nav, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -607,20 +601,6 @@ export default function App() {
       </div>
 
       <div style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 12px 40px" }}>
-        <div className="hero-card">
-          <div style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.65)" }}>Borehole installation designer</div>
-          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, marginTop: 8, maxWidth: 620 }}>Interactive installation planning, persistence, and export in one deployable app.</div>
-          <div style={{ marginTop: 10, color: "rgba(255,255,255,0.76)", maxWidth: 640, lineHeight: 1.6 }}>The mobile flow now separates setup, diagram review, and instrument editing so field users can work one task at a time.</div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
-            {quickStats.map((stat) => (
-              <div key={stat.label} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "10px 12px" }}>
-                <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.62)" }}>{stat.label}</div>
-                <div style={{ marginTop: 4, fontSize: 16, fontWeight: 800 }}>{stat.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {isMobile ? (
           <div className="mobile-tabs">
             {[

@@ -97,6 +97,31 @@ const createDraft = () => ({
   instruments: [createInstrument()],
 });
 
+function useIsMobile(breakpoint = 880) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.innerWidth <= breakpoint;
+  });
+
+  useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const update = (event) => setIsMobile(event.matches);
+    setIsMobile(media.matches);
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", update);
+      return () => media.removeEventListener("change", update);
+    }
+
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
 function NumberField({ label, value, onChange, min = 0, max = 999, step = 0.01, unit = "m" }) {
   const [local, setLocal] = useState(value === "" ? "" : String(value));
 
@@ -165,11 +190,42 @@ function ChoicePills({ options, value, onChange, palette = {} }) {
   );
 }
 
+function MobileSelect({ label, value, options, onChange }) {
+  return (
+    <label style={{ display: "grid", gap: 6 }}>
+      {label ? <span style={{ fontSize: 10, fontWeight: 700, color: T.dim }}>{label}</span> : null}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={{
+          width: "100%",
+          padding: "11px 12px",
+          borderRadius: 10,
+          border: `1px solid ${T.border}`,
+          background: T.surface2,
+          color: T.text,
+          outline: "none",
+        }}
+      >
+        {options.map((option) => {
+          const optionValue = typeof option === "string" ? option : option.v;
+          const optionLabel = typeof option === "string" ? option : option.l;
+          return (
+            <option key={optionValue} value={optionValue}>
+              {optionLabel}
+            </option>
+          );
+        })}
+      </select>
+    </label>
+  );
+}
+
 function SectionLabel({ children }) {
   return <div style={{ fontSize: 10, fontWeight: 800, color: T.dimmer, letterSpacing: "0.1em", textTransform: "uppercase", margin: "14px 0 8px" }}>{children}</div>;
 }
 
-function Diagram({ instruments, totalDepth, surface, onDragDepth }) {
+function Diagram({ instruments, totalDepth, surface, onDragDepth, isMobile }) {
   const svgRef = useRef(null);
   const W = 320;
   const H = 520;
@@ -217,9 +273,13 @@ function Diagram({ instruments, totalDepth, surface, onDragDepth }) {
   const tickInterval = totalDepth <= 10 ? 1 : totalDepth <= 25 ? 2 : totalDepth <= 50 ? 5 : 10;
   for (let depth = 0; depth <= totalDepth; depth += tickInterval) ticks.push(depth);
 
+  const handleRadius = isMobile ? 10 : 7;
+  const handleHitRadius = isMobile ? 18 : 10;
+
   const Handle = ({ x, y, instrumentId, field, color }) => (
     <g onMouseDown={(event) => startDrag(instrumentId, field, event)} onTouchStart={(event) => startDrag(instrumentId, field, event)} style={{ cursor: "ns-resize" }}>
-      <circle cx={x} cy={y} r={7} fill={color} stroke={T.text} strokeWidth={1.5} />
+      <circle cx={x} cy={y} r={handleHitRadius} fill="transparent" />
+      <circle cx={x} cy={y} r={handleRadius} fill={color} stroke={T.text} strokeWidth={1.5} />
       <line x1={x - 3} y1={y} x2={x + 3} y2={y} stroke={T.text} strokeWidth={1.5} />
     </g>
   );
@@ -290,7 +350,26 @@ function Diagram({ instruments, totalDepth, surface, onDragDepth }) {
   );
 }
 
-function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, canRemove }) {
+function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, canRemove, isMobile }) {
+  const [expanded, setExpanded] = useState(index === 0);
+  const [expandedLayerId, setExpandedLayerId] = useState(instrument.backfill[0]?.id ?? null);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setExpanded(true);
+      return;
+    }
+    if (index === 0) {
+      setExpanded(true);
+    }
+  }, [index, isMobile]);
+
+  useEffect(() => {
+    if (!instrument.backfill.some((layer) => layer.id === expandedLayerId)) {
+      setExpandedLayerId(instrument.backfill[0]?.id ?? null);
+    }
+  }, [expandedLayerId, instrument.backfill]);
+
   const updateLayer = (layerId, patch) => onChange({
     ...instrument,
     backfill: instrument.backfill.map((layer) => (layer.id === layerId ? { ...layer, ...patch } : layer)),
@@ -303,10 +382,36 @@ function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, can
 
   return (
     <div style={{ background: T.surface, borderRadius: 14, border: `1px solid ${T.border}`, marginBottom: 12, overflow: "hidden", boxShadow: "0 6px 20px rgba(0,0,0,0.04)" }}>
-      <div style={{ padding: "12px 14px", background: `${(PIPE_COLOURS[instrument.pipe_material] || T.accent)}18`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>Instrument {index + 1}</strong>
-        {canRemove ? <button onClick={onRemove} style={{ border: `1px solid ${T.red}`, color: T.red, borderRadius: 8, padding: "6px 10px", background: "transparent", cursor: "pointer" }}>Remove</button> : null}
+      <div style={{ padding: "12px 14px", background: `${(PIPE_COLOURS[instrument.pipe_material] || T.accent)}18`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <div>
+          <strong>Instrument {index + 1}</strong>
+          <div style={{ fontSize: 12, color: T.dim, marginTop: 4 }}>
+            {[instrument.ref_id || "Untitled", INST_TYPES.find((item) => item.v === instrument.inst_type)?.l || "Type", `${instrument.pipe_material} pipe`].join(" | ")}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isMobile ? (
+            <button onClick={() => setExpanded((current) => !current)} style={{ border: `1px solid ${T.border}`, color: T.text, borderRadius: 999, padding: "6px 10px", background: T.surface, cursor: "pointer", fontWeight: 700 }}>
+              {expanded ? "Hide" : "Edit"}
+            </button>
+          ) : null}
+          {canRemove ? <button onClick={onRemove} style={{ border: `1px solid ${T.red}`, color: T.red, borderRadius: 8, padding: "6px 10px", background: "transparent", cursor: "pointer" }}>Remove</button> : null}
+        </div>
       </div>
+      {isMobile && !expanded ? (
+        <div style={{ padding: 14, display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+            <div style={{ background: T.surface2, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: T.dim, fontWeight: 700 }}>Casing</div>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>{instrument.casing_top || "0"} - {instrument.casing_bottom || draftSafeDepth(totalDepth)}m</div>
+            </div>
+            <div style={{ background: T.surface2, borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: T.dim, fontWeight: 700 }}>Backfill Layers</div>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>{instrument.backfill.length}</div>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div style={{ padding: 14 }}>
         <SectionLabel>Instrument Type</SectionLabel>
         <ChoicePills options={INST_TYPES} value={instrument.inst_type} onChange={(value) => onChange({ ...instrument, inst_type: value })} />
@@ -316,7 +421,7 @@ function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, can
 
         <SectionLabel>Pipe / Casing</SectionLabel>
         <ChoicePills options={PIPE_MATERIALS} value={instrument.pipe_material} onChange={(value) => onChange({ ...instrument, pipe_material: value })} palette={PIPE_COLOURS} />
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <div className="field-row" style={{ marginTop: 8 }}>
           <NumberField label="Diameter" value={instrument.pipe_diameter} onChange={(value) => onChange({ ...instrument, pipe_diameter: value })} min={10} max={300} step={1} unit="mm" />
           <NumberField label="Pipe Length" value={instrument.pipe_length} onChange={(value) => onChange({ ...instrument, pipe_length: value })} max={totalDepth + 2} />
           <NumberField label="Stick-up" value={instrument.stickup} onChange={(value) => onChange({ ...instrument, stickup: value })} max={3} />
@@ -324,15 +429,15 @@ function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, can
 
         <SectionLabel>Depths</SectionLabel>
         <div style={{ display: "grid", gap: 8 }}>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="field-row">
             <NumberField label="Casing Top" value={instrument.casing_top} onChange={(value) => onChange({ ...instrument, casing_top: value })} max={totalDepth} />
             <NumberField label="Casing Bottom" value={instrument.casing_bottom} onChange={(value) => onChange({ ...instrument, casing_bottom: value })} max={totalDepth} />
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="field-row">
             <NumberField label="Screen Top" value={instrument.screen_top} onChange={(value) => onChange({ ...instrument, screen_top: value })} max={totalDepth} />
             <NumberField label="Screen Bottom" value={instrument.screen_bottom} onChange={(value) => onChange({ ...instrument, screen_bottom: value })} max={totalDepth} />
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="field-row">
             <NumberField label="Seal Top" value={instrument.seal_top} onChange={(value) => onChange({ ...instrument, seal_top: value })} max={totalDepth} />
             <NumberField label="Seal Bottom" value={instrument.seal_bottom} onChange={(value) => onChange({ ...instrument, seal_bottom: value })} max={totalDepth} />
           </div>
@@ -343,15 +448,45 @@ function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, can
           {instrument.backfill.map((layer, layerIndex) => (
             <div key={layer.id} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 10, background: `${LAYER_STYLES[layer.material]?.fill || "#f3f4f6"}22` }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <strong style={{ fontSize: 12 }}>Layer {layerIndex + 1}</strong>
+                <button
+                  onClick={() => isMobile ? setExpandedLayerId((current) => current === layer.id ? null : layer.id) : undefined}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    padding: 0,
+                    cursor: isMobile ? "pointer" : "default",
+                    textAlign: "left",
+                    flex: 1,
+                  }}
+                >
+                  <strong style={{ fontSize: 12 }}>Layer {layerIndex + 1}</strong>
+                  {isMobile ? (
+                    <div style={{ fontSize: 12, color: T.dim, marginTop: 4 }}>
+                      {LAYER_STYLES[layer.material]?.label} | {layer.top || "0"} - {layer.base || totalDepth}m
+                    </div>
+                  ) : null}
+                </button>
                 {instrument.backfill.length > 1 ? <button onClick={() => onChange({ ...instrument, backfill: instrument.backfill.filter((item) => item.id !== layer.id) })} style={{ border: 0, background: "transparent", color: T.dim, cursor: "pointer" }}>x</button> : null}
               </div>
-              <ChoicePills options={BACKFILL_MATERIALS.map((material) => ({ v: material, l: LAYER_STYLES[material].label }))} value={layer.material} onChange={(value) => updateLayer(layer.id, { material: value })} />
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <NumberField label="Top" value={layer.top} onChange={(value) => updateLayer(layer.id, { top: value })} max={totalDepth} />
-                <NumberField label="Base" value={layer.base} onChange={(value) => updateLayer(layer.id, { base: value })} max={totalDepth} />
-                <NumberField label="Qty" value={layer.qty} onChange={(value) => updateLayer(layer.id, { qty: value })} min={0} unit="" />
-              </div>
+              {!isMobile || expandedLayerId === layer.id ? (
+                <>
+                  {isMobile ? (
+                    <MobileSelect
+                      label="Material"
+                      value={layer.material}
+                      options={BACKFILL_MATERIALS.map((material) => ({ v: material, l: LAYER_STYLES[material].label }))}
+                      onChange={(value) => updateLayer(layer.id, { material: value })}
+                    />
+                  ) : (
+                    <ChoicePills options={BACKFILL_MATERIALS.map((material) => ({ v: material, l: LAYER_STYLES[material].label }))} value={layer.material} onChange={(value) => updateLayer(layer.id, { material: value })} />
+                  )}
+                  <div className="field-row" style={{ marginTop: 8 }}>
+                    <NumberField label="Top" value={layer.top} onChange={(value) => updateLayer(layer.id, { top: value })} max={totalDepth} />
+                    <NumberField label="Base" value={layer.base} onChange={(value) => updateLayer(layer.id, { base: value })} max={totalDepth} />
+                    <NumberField label="Qty" value={layer.qty} onChange={(value) => updateLayer(layer.id, { qty: value })} min={0} unit="" />
+                  </div>
+                </>
+              ) : null}
             </div>
           ))}
         </div>
@@ -364,11 +499,18 @@ function InstrumentCard({ instrument, index, totalDepth, onChange, onRemove, can
         <SectionLabel>Remarks</SectionLabel>
         <textarea value={instrument.remarks} onChange={(event) => onChange({ ...instrument, remarks: event.target.value })} rows={3} placeholder="Installation notes, conditions, issues" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface2, outline: "none", resize: "vertical" }} />
       </div>
+      )}
     </div>
   );
 }
 
+function draftSafeDepth(totalDepth) {
+  return totalDepth || 0;
+}
+
 export default function App() {
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState("setup");
   const [draft, setDraft] = useState(createDraft);
   const [toast, setToast] = useState({ msg: "", visible: false });
   const [saved, setSaved] = useState(false);
@@ -439,6 +581,18 @@ export default function App() {
     window.setTimeout(() => setSaved(false), 3000);
   };
 
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileView("setup");
+    }
+  }, [isMobile]);
+
+  const quickStats = [
+    { label: "Instruments", value: draft.instruments.length },
+    { label: "Depth", value: `${draft.totalDepth}m` },
+    { label: "Surface", value: SURFACE_COMPLETIONS.find((item) => item.v === draft.surface)?.l || "Not set" },
+  ];
+
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: T.sans }}>
       <div style={{ background: T.nav, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -453,12 +607,48 @@ export default function App() {
       </div>
 
       <div style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 12px 40px" }}>
-        <div style={{ background: "linear-gradient(135deg, rgba(19,21,26,0.97) 0%, rgba(24,37,39,0.92) 100%)", borderRadius: 18, padding: 22, color: T.white, marginBottom: 16, boxShadow: "0 18px 50px rgba(19,21,26,0.18)" }}>
+        <div className="hero-card">
           <div style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.65)" }}>Borehole installation designer</div>
-          <div style={{ fontSize: 32, fontWeight: 800, marginTop: 8, maxWidth: 620 }}>Interactive installation planning, persistence, and export in one deployable app.</div>
-          <div style={{ marginTop: 10, color: "rgba(255,255,255,0.76)", maxWidth: 640, lineHeight: 1.6 }}>This project now runs as a standard React app that Coolify can build from the included Dockerfile and serve through Nginx.</div>
+          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 800, marginTop: 8, maxWidth: 620 }}>Interactive installation planning, persistence, and export in one deployable app.</div>
+          <div style={{ marginTop: 10, color: "rgba(255,255,255,0.76)", maxWidth: 640, lineHeight: 1.6 }}>The mobile flow now separates setup, diagram review, and instrument editing so field users can work one task at a time.</div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
+            {quickStats.map((stat) => (
+              <div key={stat.label} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.62)" }}>{stat.label}</div>
+                <div style={{ marginTop: 4, fontSize: 16, fontWeight: 800 }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
         </div>
 
+        {isMobile ? (
+          <div className="mobile-tabs">
+            {[
+              { id: "setup", label: "Setup" },
+              { id: "diagram", label: "Diagram" },
+              { id: "forms", label: "Instruments" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setMobileView(tab.id)}
+                style={{
+                  padding: "12px 10px",
+                  borderRadius: 12,
+                  border: `1px solid ${mobileView === tab.id ? T.accent : T.border}`,
+                  background: mobileView === tab.id ? T.accent : T.surface,
+                  color: mobileView === tab.id ? T.white : T.text,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: mobileView === tab.id ? "0 8px 20px rgba(16,185,129,0.2)" : "none",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {(!isMobile || mobileView === "setup") ? (
         <div style={{ background: T.surface, borderRadius: 16, padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 12, boxShadow: "0 6px 20px rgba(0,0,0,0.04)" }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: T.dim, marginBottom: 6 }}>Project Name</div>
@@ -474,17 +664,22 @@ export default function App() {
             <ChoicePills options={SURFACE_COMPLETIONS} value={draft.surface} onChange={(value) => setDraft((current) => ({ ...current, surface: value }))} />
           </div>
         </div>
+        ) : null}
 
         <div className="layout" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <div className="diagram-panel" style={{ flex: "0 0 340px", padding: 4, position: "sticky", top: 0, alignSelf: "flex-start", maxHeight: "100vh", overflowY: "auto" }}>
+          {(!isMobile || mobileView === "diagram") ? (
+          <div className="diagram-panel" style={{ flex: "0 0 340px", width: isMobile ? "100%" : undefined, padding: 4, position: "sticky", top: 0, alignSelf: "flex-start", maxHeight: "100vh", overflowY: "auto" }}>
             <div style={{ background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
               <div style={{ padding: "8px 12px 4px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: T.dim, letterSpacing: "0.08em" }}>BOREHOLE CROSS-SECTION - {draft.totalDepth}m</div>
-              <Diagram instruments={draft.instruments} totalDepth={draft.totalDepth} surface={draft.surface} onDragDepth={handleDragDepth} />
+              <Diagram instruments={draft.instruments} totalDepth={draft.totalDepth} surface={draft.surface} onDragDepth={handleDragDepth} isMobile={isMobile} />
+              {isMobile ? <div style={{ padding: "10px 12px 14px", borderTop: `1px solid ${T.border}`, fontSize: 12, color: T.dim, lineHeight: 1.5 }}>Drag the handle markers to fine-tune casing, screen, and seal depths, then switch back to Instruments to review the numeric values.</div> : null}
             </div>
           </div>
+          ) : null}
 
-          <div style={{ flex: "1 1 340px", padding: 4, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {(!isMobile || mobileView === "forms") ? (
+          <div style={{ flex: "1 1 340px", width: isMobile ? "100%" : undefined, padding: 4, minWidth: 0 }}>
+            <div className="action-row">
               <button onClick={() => setDraft((current) => ({ ...current, instruments: [...current.instruments, createInstrument()] }))} style={{ flex: "1 1 160px", padding: "14px", borderRadius: 10, border: `2px dashed ${T.accent}`, background: "transparent", color: T.accent, fontWeight: 700, cursor: "pointer" }}>+ Add Instrument</button>
               <button onClick={exportDraft} style={{ flex: "1 1 160px", padding: "14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface, color: T.text, fontWeight: 700, cursor: "pointer" }}>Export JSON</button>
               <button onClick={() => { window.localStorage.removeItem(STORAGE_KEY); setDraft(createDraft()); showToast("Draft cleared"); }} style={{ flex: "1 1 160px", padding: "14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.surface, color: T.red, fontWeight: 700, cursor: "pointer" }}>Clear Draft</button>
@@ -499,15 +694,27 @@ export default function App() {
                 onChange={(next) => updateInstrument(instrument.id, next)}
                 onRemove={() => setDraft((current) => ({ ...current, instruments: current.instruments.filter((item) => item.id !== instrument.id) }))}
                 canRemove={draft.instruments.length > 1}
+                isMobile={isMobile}
               />
             ))}
 
+            {!isMobile ? (
             <button onClick={saveDraft} style={{ width: "100%", padding: "16px", borderRadius: 10, border: 0, background: saved ? T.accentDark : T.accent, color: T.white, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
               {saved ? "Saved" : "Save Installation Record"}
             </button>
+            ) : null}
           </div>
+          ) : null}
         </div>
       </div>
+
+      {isMobile ? (
+        <div className="mobile-savebar">
+          <button onClick={saveDraft} style={{ width: "100%", padding: "15px 16px", borderRadius: 14, border: 0, background: saved ? T.accentDark : T.accent, color: T.white, fontSize: 15, fontWeight: 800, cursor: "pointer", boxShadow: "0 12px 24px rgba(16,185,129,0.22)" }}>
+            {saved ? "Saved" : "Save Installation Record"}
+          </button>
+        </div>
+      ) : null}
 
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: T.nav, color: T.white, padding: "10px 22px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.1)", opacity: toast.visible ? 1 : 0, pointerEvents: "none", transition: "opacity 0.2s", fontSize: 13, fontWeight: 700 }}>
         {toast.msg}
